@@ -5,9 +5,9 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "XiaoDong & JiangRTTTR"
 #define MyAppExeName "会议桌牌打印系统.exe"
-; Paths are relative to this .iss file in packaging/.
-#define MyAppSourceDir AddBackslash(SourcePath) + "..\dist\会议桌牌打印系统"
-#define MyAppIcon AddBackslash(SourcePath) + "..\resources\icon.ico"
+; Paths are relative to this .iss file in the repo root.
+#define MyAppSourceDir AddBackslash(SourcePath) + "dist\会议桌牌打印系统"
+#define MyAppIcon AddBackslash(SourcePath) + "resources\icon.ico"
 #define MyAppUserModelId "XiaoDong.MeetingNameplate"
 
 [Setup]
@@ -21,7 +21,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
-OutputDir=..\dist_installer
+OutputDir=dist_installer
 OutputBaseFilename=会议桌牌打印系统_Setup
 SetupIconFile={#MyAppIcon}
 SolidCompression=yes

@@ -6,7 +6,6 @@
 
 软件采用 **主界面编辑 + 排版预览打印** 的模式：主界面用于填写名单与调整版式，预览窗口用于检查分页排版并发送到打印机或导出 PDF。
 
-
 ---
 
 ## ✨ 软件功能
@@ -53,12 +52,13 @@
 - `F8` 打开「排版预览并打印」。
 - 纸上能放下几张牌就排几张；装不下的部分裁在纸边内，不缩小。
 - 排版预览支持 **一页 / 两页**。两页按组翻页（1–2，然后 3）。
+- 预览区可用滚轮翻页，`Ctrl + 滚轮` 缩放。
 - 支持纸张尺寸（A4 / A5 / A3 / Letter）与页面方向（自动 / 纵向 / 横向）。
 - 支持边框线型、上 / 下 / 左 / 右边线、对折中线、线条浓度。
 - 支持文字分散对齐。
 - 可输出到系统打印机，或打印到 PDF。
 
-未处理异常会写入项目目录（开发）或程序目录旁的 `crash.log`，避免静默闪退。
+未处理异常会写入 `crash.log`，避免静默闪退。
 
 ---
 
@@ -69,7 +69,8 @@
 | `F8` | 排版预览并打印 |
 | `Ctrl + P` | 预览窗口中发送到打印机 |
 | `Esc` | 关闭排版预览 |
-| `Ctrl + 滚轮` | 名单编辑区缩放字号 |
+| `Ctrl + 滚轮` | 名单编辑区缩放字号；排版预览中缩放页面 |
+| 滚轮 | 排版预览中翻页 |
 
 ---
 
@@ -83,7 +84,7 @@
 | PyInstaller | Windows EXE 打包 |
 | Inno Setup 7 | Windows 安装程序制作 |
 
-项目采用模块化结构：`app` 负责启动与中文翻译，`core` 负责配置与排版数据，`render` 负责绘制打印，`ui` 负责界面，`packaging` 存放打包脚本，`resources` 存放只读资源。
+项目采用模块化结构：`app` 负责启动与中文翻译，`core` 负责配置与排版数据，`render` 负责绘制打印，`ui` 负责界面，`resources` 存放只读资源。打包相关文件（`build_exe.bat`、`.spec`、`.iss`、`file_version_info.txt`）均位于项目根目录。
 
 ---
 
@@ -92,9 +93,9 @@
 ```text
 meeting-nameplate/
 ├── main.py                              # 程序入口
-├── app/                                 # 启动、版本、中文翻译与异常兜底
+├── app/                                 # 启动、应用标识、中文翻译与异常兜底
 │   ├── main.py
-│   ├── identity.py                      # 1.0.0 / AppUserModelID
+│   ├── identity.py                      # 应用名 / AppUserModelID
 │   └── i18n.py                          # qtbase 简体中文
 ├── core/                                # 配置、规格、排版数据
 │   ├── config.py
@@ -117,20 +118,21 @@ meeting-nameplate/
 │   ├── output_bar.py
 │   ├── title_row.py
 │   ├── preview_pane.py
-│   ├── preview/                         # 单牌预览 + 排版预览对话框
+│   ├── font_list.py
+│   ├── preview/                         # 单牌预览 + 排版预览（SheetsView）
 │   └── widgets/                         # 下拉、标签、中文取色器
 ├── tests/
-├── packaging/                           # PyInstaller / Inno Setup
-│   ├── 会议桌牌打印系统.spec
-│   ├── 会议桌牌打印系统.iss
-│   ├── build_exe.bat
-│   └── file_version_info.txt
 ├── resources/
 │   ├── icon.ico                         # 窗口 / 任务栏图标
 │   ├── styles/app.qss
-│   ├── icons/
-│   └── translations/                    # Qt 简体中文 .qm
-├── build_exe.bat
+│   ├── icons/                           # 界面 SVG 图标
+│   ├── translations/                    # Qt 简体中文 .qm
+│   └── install.mark
+├── build_exe.bat                        # PyInstaller 一键打包
+├── 会议桌牌打印系统.spec
+├── 会议桌牌打印系统.iss
+├── file_version_info.txt
+├── requirements.txt
 ├── LICENSE
 └── README.md
 ```
@@ -169,13 +171,13 @@ python -m app.main
 
 ## 📦 Windows EXE 打包
 
-项目提供 `build_exe.bat`，用于通过 PyInstaller 构建 Windows EXE。
-
-在项目根目录运行：
+在项目根目录双击或运行：
 
 ```text
 build_exe.bat
 ```
+
+脚本会调用同目录下的 `会议桌牌打印系统.spec`，通过 PyInstaller 生成 EXE。
 
 打包后的目录通常为：
 
@@ -203,17 +205,17 @@ dist/
 
 ## 📦 Windows 安装程序
 
-安装程序使用 **Inno Setup 7**，配置文件为：
+安装程序使用 **Inno Setup 7**，配置文件位于项目根目录：
 
 ```text
 会议桌牌打印系统.iss
 ```
 
-位于 `packaging/`。推荐流程：
+推荐流程：
 
-1. 运行根目录 `build_exe.bat`（或 `packaging\build_exe.bat`）。
+1. 运行根目录 `build_exe.bat`。
 2. 检查 `dist/会议桌牌打印系统/` 中的 EXE 能够正常运行。
-3. 使用 Inno Setup 7 打开 `packaging/会议桌牌打印系统.iss`。
+3. 使用 Inno Setup 7 打开 `会议桌牌打印系统.iss`。
 4. 编译安装程序。
 5. 在 `dist_installer/` 取得最终安装包（`会议桌牌打印系统_Setup.exe`）。
 
@@ -228,7 +230,7 @@ dist/
 3. 选择正文字体、字号与桌牌规格。
 4. 按需设置抬头、落款、边框，以及牌面纯色或背景图。
 5. 在右侧查看单牌预览。
-6. 按 `F8` 打开排版预览。可用「一页 / 两页」查看分页。
+6. 按 `F8` 打开排版预览。可用「一页 / 两页」查看分页，滚轮翻页。
 7. 确认纸张与方向后，发送到打印机或导出 PDF。
 
 ---

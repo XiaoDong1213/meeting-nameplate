@@ -5,8 +5,7 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
 
-# SPECPATH is packaging/; sources live in the repo root.
-project_root = Path(SPECPATH).resolve().parent
+project_root = Path(SPECPATH).resolve()
 resources = project_root / "resources"
 
 APP_NAME = "会议桌牌打印系统"

@@ -10,6 +10,8 @@ PAGE_SIZES: dict[str, QPageSize.PageSizeId] = {
     "A4": QPageSize.PageSizeId.A4,
     "A5": QPageSize.PageSizeId.A5,
     "A3": QPageSize.PageSizeId.A3,
+    "A6": QPageSize.PageSizeId.A6,
+    "B5": QPageSize.PageSizeId.B5,
     "Letter": QPageSize.PageSizeId.Letter,
 }
 

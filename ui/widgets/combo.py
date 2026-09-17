@@ -166,8 +166,9 @@ def tune_combo(combo: QComboBox, min_w: int = 100) -> None:
     combo.setMaxVisibleItems(COMBO_MAX_VISIBLE)
     combo.setMinimumWidth(min_w)
     combo.setMinimumHeight(34)
-    # Reserve enough glyph slots for CJK (~14px/char) so closed-state text is not clipped.
-    combo.setMinimumContentsLength(max(4, (min_w - 40) // 14))
+    # Prefer pixel width over crude CJK char slots (ASCII specs like 210*110mm need more).
+    avg = max(7, combo.fontMetrics().averageCharWidth())
+    combo.setMinimumContentsLength(max(4, (min_w - 40) // avg))
     combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
 
     view = _CappedListView(combo, combo)
@@ -195,3 +196,39 @@ def tune_combo(combo: QComboBox, min_w: int = 100) -> None:
         QTimer.singleShot(0, polish)
 
     combo.showPopup = show_popup  # type: ignore[method-assign]
+
+
+def fit_combo_width(
+    combo: QComboBox,
+    *,
+    pad: int = 64,
+    floor: int | None = None,
+    ceiling: int = 320,
+    extra_texts: list[str] | None = None,
+) -> None:
+    """Widen combo so the longest item / current text is not clipped when closed."""
+    fm = combo.fontMetrics()
+    widest = 0
+    longest_chars = 4
+    samples: list[str] = []
+    for i in range(combo.count()):
+        samples.append(combo.itemText(i))
+    samples.extend(t for t in (extra_texts or ()) if t)
+    cur = combo.currentText()
+    if cur:
+        samples.append(cur)
+    line = combo.lineEdit()
+    if line is not None and line.text():
+        samples.append(line.text())
+    for text in samples:
+        widest = max(widest, fm.horizontalAdvance(text))
+        longest_chars = max(longest_chars, len(text))
+    base = floor if floor is not None else max(80, combo.minimumWidth())
+    need = min(ceiling, max(base, widest + pad))
+    combo.setMinimumWidth(need)
+    avg = max(7, fm.averageCharWidth())
+    # Character count floor matters for ASCII specs (210*110mm); pixel pad covers the arrow.
+    combo.setMinimumContentsLength(max(longest_chars, (need - pad) // avg))
+    view = combo.view()
+    if view is not None:
+        view.setMinimumWidth(max(need, 120))

@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 from core.colors import argb_to_qcolor, qcolor_to_argb
 from core.enums import FontStyle
 from core.specs import Title, default_title_xy
-from ui.widgets import field_label, pick_color, tune_combo
+from ui.widgets import field_label, fit_combo_width, pick_color, tune_combo
 
 TITLE_SIZES = [
     str(s) for s in (8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72)
@@ -62,6 +62,7 @@ class TitleRow(QWidget):
         tune_combo(self.font, 110)
         self.font.addItems(fonts)
         self.font.setCurrentText(data.font_name if data.font_name in fonts else fonts[0])
+        fit_combo_width(self.font, floor=110, ceiling=180)
 
         self.size = QComboBox()
         self.size.setEditable(True)
@@ -69,11 +70,13 @@ class TitleRow(QWidget):
         tune_combo(self.size, 72)
         self.size.addItems(TITLE_SIZES)
         self.size.setCurrentText(str(int(data.font_size)))
+        fit_combo_width(self.size, floor=72, ceiling=100)
 
         self.style = QComboBox()
         tune_combo(self.style, 72)
         self.style.addItems(styles)
         self.style.setCurrentText(data.font_style.value)
+        fit_combo_width(self.style, floor=72, ceiling=100)
 
         self._color = argb_to_qcolor(data.argb)
         self.color_btn = QPushButton("文字颜色")

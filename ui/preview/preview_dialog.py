@@ -24,13 +24,13 @@ from PyQt6.QtWidgets import (
 )
 
 from core.config import PrintConfig
+from core.pages import PAGE_ORIENT_KEYS, PAGE_ORIENT_LABELS
 from core.paths import app_icon_path
 from render.document import paint_to_printer, render_sheets, resolve_landscape
 from render.pages import PAGE_SIZES
 from ui.preview.sheets_view import MODE_ONE, MODE_TWO, SheetsView
-from ui.widgets import tune_combo
+from ui.widgets import fit_combo_width, tune_combo
 
-_ORIENT_LABELS = [("自动判断", "auto"), ("纵向", "portrait"), ("横向", "landscape")]
 _log = logging.getLogger(__name__)
 
 
@@ -110,16 +110,17 @@ class PreviewDialog(QDialog):
         if page_size in PAGE_SIZES:
             self.size_combo.setCurrentText(page_size)
         tune_combo(self.size_combo, 88)
+        fit_combo_width(self.size_combo, floor=88, ceiling=120)
 
         orient_lab = QLabel("页面方向")
         orient_lab.setObjectName("fieldLabel")
         self.orient_combo = QComboBox()
-        for label, _key in _ORIENT_LABELS:
+        for label, _key in PAGE_ORIENT_LABELS:
             self.orient_combo.addItem(label)
-        orient_keys = [k for _, k in _ORIENT_LABELS]
-        if page_orientation in orient_keys:
-            self.orient_combo.setCurrentIndex(orient_keys.index(page_orientation))
+        if page_orientation in PAGE_ORIENT_KEYS:
+            self.orient_combo.setCurrentIndex(PAGE_ORIENT_KEYS.index(page_orientation))
         tune_combo(self.orient_combo, 110)
+        fit_combo_width(self.orient_combo, floor=110, ceiling=140)
 
         self.print_btn = QPushButton("发送到打印机")
         self.print_btn.setObjectName("primaryButton")
@@ -203,7 +204,10 @@ class PreviewDialog(QDialog):
         )
 
     def _current_orientation_key(self) -> str:
-        return _ORIENT_LABELS[self.orient_combo.currentIndex()][1]
+        idx = self.orient_combo.currentIndex()
+        if 0 <= idx < len(PAGE_ORIENT_KEYS):
+            return PAGE_ORIENT_KEYS[idx]
+        return "auto"
 
     def _sync_printer_page(self) -> None:
         size_name = self.size_combo.currentText()

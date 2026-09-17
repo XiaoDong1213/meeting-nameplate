@@ -9,7 +9,7 @@ from PyQt6.QtGui import QColor, QImage, QPageLayout, QPageSize, QPainter
 from PyQt6.QtPrintSupport import QPrinter
 
 from core.config import PrintConfig
-from core.layout import Edge, Rect, get_edges
+from core.layout import Edge, Rect, get_edges, inset_rect
 from core.pages import PAGE_SIZE_MM
 from core.specs import Setup, mm_to_pixels
 from render.fonts import MAX_FONT, fit_font_for_lines
@@ -17,6 +17,16 @@ from render.pages import PAGE_SIZES
 from render.paint import draw_borders, draw_content, font_from_style
 
 PREVIEW_DPI = 96.0
+
+
+def _border_inset_px(config: PrintConfig, dpi: float) -> tuple[int, int, int, int]:
+    """Return (top, right, bottom, left) inset in pixels. Positive = inward."""
+    return (
+        mm_to_pixels(config.border_inset_top_mm, dpi),
+        mm_to_pixels(config.border_inset_right_mm, dpi),
+        mm_to_pixels(config.border_inset_bottom_mm, dpi),
+        mm_to_pixels(config.border_inset_left_mm, dpi),
+    )
 
 
 def resolve_landscape(config: PrintConfig, setup: Setup) -> bool:
@@ -92,8 +102,13 @@ class NameplateDocument:
         painter.save()
         painter.translate(*self._origin)
         painter.setClipRect(QRectF(0, 0, self._page_w, self._page_h))
+        top_i, right_i, bottom_i, left_i = _border_inset_px(cfg, self._dpi)
+        border_rects = [
+            inset_rect(r, top=top_i, right=right_i, bottom=bottom_i, left=left_i)
+            for r in self._rects
+        ]
         edges = get_edges(
-            self._rects,
+            border_rects,
             top=cfg.border_top,
             right=cfg.border_right,
             bottom=cfg.border_bottom,
@@ -110,8 +125,8 @@ class NameplateDocument:
                 if cfg.border_fold:
                     edges.append(
                         Edge.normalize(
-                            (rect.x, rect.y + mid_y),
-                            (rect.x + rect.width, rect.y + mid_y),
+                            (rect.x + left_i, rect.y + mid_y),
+                            (rect.x + rect.width - right_i, rect.y + mid_y),
                         )
                     )
                 painter.translate(rect.width, rect.height)
@@ -131,8 +146,8 @@ def resolve_font_size(config: PrintConfig, setup: Setup, lines: list[str], dpi: 
     """Resolve configured font size mode to point size."""
     size_text = config.font_size_text
     base = font_from_style(config.font_name, 12, config.font_style)
-    card_w = mm_to_pixels(setup.width_mm, dpi)
-    card_h = mm_to_pixels(setup.height_mm, dpi)
+    card_w = mm_to_pixels(setup.face_width_mm(), dpi)
+    card_h = mm_to_pixels(setup.face_height_mm(), dpi)
     if size_text in {"最大化", "每牌尽量大", str(MAX_FONT)}:
         return float(MAX_FONT)
     try:

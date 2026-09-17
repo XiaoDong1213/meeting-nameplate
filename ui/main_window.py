@@ -35,7 +35,7 @@ from ui.preview_pane import PreviewPane
 from ui.roster_panel import EDITOR_DEFAULT_PT, RosterPanel
 from ui.settings_bar import SettingsBar
 from ui.title_row import TitleRow
-from ui.widgets import pick_color, section_label
+from ui.widgets import fit_combo_width, pick_color, section_label
 
 
 class MainWindow(QMainWindow):
@@ -141,6 +141,8 @@ class MainWindow(QMainWindow):
         self.settings.font_combo.currentTextChanged.connect(self._update_editor_font)
         self.settings.style_combo.currentTextChanged.connect(self._update_editor_font)
         self.settings.spec_changed.connect(self._on_spec_changed)
+        self.settings.mirror_combo.currentTextChanged.connect(self._on_mirror_mode_changed)
+        self.settings.orient_combo.currentTextChanged.connect(self._on_card_orient_changed)
         self.settings.color_clicked.connect(self._pick_color)
         self.settings.bg_picked.connect(self._on_bg_picked)
         self.settings.bg_color_picked.connect(self._on_bg_color)
@@ -170,10 +172,10 @@ class MainWindow(QMainWindow):
         fonts = chinese_fonts() or ["黑体", "楷体", "宋体"]
         styles = [s.value for s in FontStyle]
         self._title_header = TitleRow(
-            "抬头", "例如：工作会议", setup.title1, fonts, styles, True, setup.width_mm, setup.height_mm
+            "抬头", "例如：工作会议", setup.title1, fonts, styles, True, setup.face_width_mm(), setup.face_height_mm()
         )
         self._title_footer = TitleRow(
-            "落款", "例如：主办单位", setup.title2, fonts, styles, False, setup.width_mm, setup.height_mm
+            "落款", "例如：主办单位", setup.title2, fonts, styles, False, setup.face_width_mm(), setup.face_height_mm()
         )
         self._title_host.addWidget(self._title_header)
         self._title_host.addWidget(self._title_footer)
@@ -193,6 +195,7 @@ class MainWindow(QMainWindow):
         s.size_combo.setCurrentText(cfg.font_size_text)
         s.spec_combo.addItems(cfg.size_list)
         s.spec_combo.setCurrentText(cfg.size_text)
+        fit_combo_width(s.spec_combo, floor=168, ceiling=220)
 
         printers = [o.printer_combo.itemText(i) for i in range(o.printer_combo.count())]
         if cfg.printer_name and cfg.printer_name in printers:
@@ -203,12 +206,23 @@ class MainWindow(QMainWindow):
         o.border_left.setChecked(cfg.border_left)
         o.border_right.setChecked(cfg.border_right)
         o.border_fold.setChecked(cfg.border_fold)
+        o.set_border_insets_mm(
+            cfg.border_inset_top_mm,
+            cfg.border_inset_bottom_mm,
+            cfg.border_inset_left_mm,
+            cfg.border_inset_right_mm,
+        )
         o.distribute.setChecked(cfg.insert_blank)
         o.alpha_slider.setValue(cfg.border_alpha)
         s.set_bg_hint(bool(cfg.image_file), cfg.bg_argb)
 
         setup = cfg.current_setup or Setup.parse(cfg.size_text) or Setup()
-        s.set_offset_limits(setup.width_mm, setup.height_mm)
+        s.set_mirror_enabled(setup.mirror)
+        s.set_card_landscape(setup.card_landscape)
+        o.set_fold_line_enabled(setup.mirror)
+        if setup.mirror:
+            o.border_fold.setChecked(cfg.border_fold)
+        s.set_offset_limits(setup.face_width_mm(), setup.face_height_mm())
         s.margin_spin.setValue(setup.margin_ratio)
         s.offset_x.setValue(setup.offset_x_mm)
         s.offset_y.setValue(setup.offset_y_mm)
@@ -220,19 +234,59 @@ class MainWindow(QMainWindow):
         self._update_editor_font()
 
     def _on_spec_changed(self, *_args) -> None:
+        text = self.settings.spec_combo.currentText().strip()
+        setup = Setup.parse(text)
+        if setup is None:
+            return
+        stored = self.config.setups.get(setup.text)
+        if stored is not None and stored.text == setup.text:
+            setup.mirror = stored.mirror
+            setup.card_landscape = stored.card_landscape
+            setup.margin_ratio = stored.margin_ratio
+            setup.offset_x_mm = stored.offset_x_mm
+            setup.offset_y_mm = stored.offset_y_mm
+            setup.title1 = stored.title1
+            setup.title2 = stored.title2
+        self.settings.set_mirror_enabled(setup.mirror)
+        self.settings.set_card_landscape(setup.card_landscape)
+        self.output.set_fold_line_enabled(setup.mirror)
+        if setup.mirror and self.config.border_fold:
+            self.output.border_fold.setChecked(True)
+        fw, fh = setup.face_width_mm(), setup.face_height_mm()
+        self.settings.set_offset_limits(fw, fh)
+        if self._title_header and self._title_footer:
+            self._title_header.set_limits(fw, fh, True, setup.title1)
+            self._title_footer.set_limits(fw, fh, False, setup.title2)
+        # Keep combo text canonical (e.g. a4 → A4).
+        if self.settings.spec_combo.currentText().strip() != setup.text:
+            self.settings.spec_combo.blockSignals(True)
+            self.settings.spec_combo.setCurrentText(setup.text)
+            self.settings.spec_combo.blockSignals(False)
+
+    def _on_mirror_mode_changed(self, *_args) -> None:
+        mirror = self.settings.mirror_enabled()
+        self.output.set_fold_line_enabled(mirror)
+        if mirror and self.config.border_fold:
+            self.output.border_fold.setChecked(True)
+
+    def _on_card_orient_changed(self, *_args) -> None:
         setup = Setup.parse(self.settings.spec_combo.currentText().strip())
         if setup is None:
             return
-        self.settings.set_offset_limits(setup.width_mm, setup.height_mm)
+        setup.card_landscape = self.settings.card_landscape()
+        fw, fh = setup.face_width_mm(), setup.face_height_mm()
+        self.settings.set_offset_limits(fw, fh)
         if self._title_header and self._title_footer:
-            self._title_header.set_limits(setup.width_mm, setup.height_mm, True)
-            self._title_footer.set_limits(setup.width_mm, setup.height_mm, False)
+            self._title_header.set_limits(fw, fh, True)
+            self._title_footer.set_limits(fw, fh, False)
 
     def _apply_layout_to_setup(self, setup: Setup) -> None:
         s = self.settings
         setup.margin_ratio = float(s.margin_spin.value())
         setup.offset_x_mm = int(s.offset_x.value())
         setup.offset_y_mm = int(s.offset_y.value())
+        setup.mirror = s.mirror_enabled()
+        setup.card_landscape = s.card_landscape()
         if self._title_header:
             setup.title1 = self._title_header.to_title()
         if self._title_footer:
@@ -262,6 +316,11 @@ class MainWindow(QMainWindow):
         cfg.border_left = o.border_left.isChecked()
         cfg.border_right = o.border_right.isChecked()
         cfg.border_fold = o.border_fold.isChecked()
+        top_i, bottom_i, left_i, right_i = o.border_insets_mm()
+        cfg.border_inset_top_mm = top_i
+        cfg.border_inset_bottom_mm = bottom_i
+        cfg.border_inset_left_mm = left_i
+        cfg.border_inset_right_mm = right_i
         cfg.argb = self._text_argb
 
     def _update_editor_font(self, *_args) -> None:
@@ -365,7 +424,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "桌牌规格无效",
-                "请填写有效的桌牌规格。\n宽高约 20～300mm，格式如 220*110mm",
+                "请填写有效的桌牌规格。\n"
+                "可用 A4 / A5 / A3 / A6 / B5 / Letter，或毫米格式如 220*110mm（约 20～500mm）",
             )
             return None
         self._apply_layout_to_setup(setup)

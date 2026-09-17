@@ -152,6 +152,23 @@ def edges_of_rect(
     return edges
 
 
+def inset_rect(
+    rect: Rect,
+    *,
+    top: int = 0,
+    right: int = 0,
+    bottom: int = 0,
+    left: int = 0,
+) -> Rect:
+    """Shrink (positive) or expand (negative) a rect on each side, in pixels."""
+    return Rect(
+        rect.x + left,
+        rect.y + top,
+        max(1, rect.width - left - right),
+        max(1, rect.height - top - bottom),
+    )
+
+
 def get_edges(
     rects: Iterable[Rect],
     *,

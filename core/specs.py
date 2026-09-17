@@ -8,6 +8,7 @@ from typing import Optional
 
 from core.enums import FontStyle
 from core.layout import Rect, calculate_layout, prefer_landscape
+from core.pages import PAPER_SPEC_ALIASES
 
 DEFAULT_SIZE_LIST = [
     "90*55mm",
@@ -21,15 +22,43 @@ DEFAULT_SIZE_LIST = [
     "297*100mm",
     "100*80mm",
     "120*90mm",
-    "105*148mm",
-    "148*210mm",
-    "210*297mm",
+    "A6",
+    "A5",
+    "A4",
+    "A3",
+    "B5",
+    "Letter",
 ]
 
 # mm -> 1/100 inch (same formula as original Millimeter2Inch)
 MM_TO_HUNDREDTH_INCH = 10.0 / 2.54
 
+# Allow A3 (297×420) and similar full-sheet specs.
+_SPEC_MIN_MM = 20
+_SPEC_MAX_MM = 500
+
 _SPEC_RE = re.compile(r"^(\d+)[*|x](\d+)mm(-[PL])?$", re.IGNORECASE)
+
+MIRROR_MODE_FOLD = "镜面对折"
+MIRROR_MODE_SINGLE = "单面"
+MIRROR_MODE_LABELS = (MIRROR_MODE_FOLD, MIRROR_MODE_SINGLE)
+
+CARD_ORIENT_LANDSCAPE = "横向"
+CARD_ORIENT_PORTRAIT = "纵向"
+CARD_ORIENT_LABELS = (CARD_ORIENT_LANDSCAPE, CARD_ORIENT_PORTRAIT)
+
+
+def merge_size_list(existing: list[str] | None) -> list[str]:
+    """Keep user order; append any missing built-in presets."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in list(existing or []) + list(DEFAULT_SIZE_LIST):
+        text = str(item).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
 
 
 def mm_to_hundredth_inch(value: float) -> int:
@@ -110,39 +139,69 @@ class Setup:
     offset_y_mm: int = 0
     title1: Title = field(default_factory=Title)
     title2: Title = field(default_factory=Title)
-    landscape: Optional[bool] = None
-
-    @property
-    def mirror(self) -> bool:
-        """Always fold-mirror desk cards (two halves on one card height)."""
-        return True
+    landscape: Optional[bool] = None  # unused; print sheet orient is on PrintConfig
+    # True: V-fold / mirror both halves; False: single-sided card.
+    mirror: bool = True
+    # True: longer side horizontal; False: longer side vertical.
+    card_landscape: bool = True
 
     @classmethod
     def parse(cls, text: str) -> Optional[Setup]:
-        match = _SPEC_RE.match(text.strip())
+        raw = text.strip()
+        if not raw:
+            return None
+        paper = PAPER_SPEC_ALIASES.get(raw.upper())
+        if paper is not None:
+            name, width, height = paper
+            # Named sheets default to single-sided portrait (e.g. A4 210×297).
+            return cls(
+                text=name,
+                width_mm=width,
+                height_mm=height,
+                landscape=None,
+                mirror=False,
+                card_landscape=False,
+            )
+        match = _SPEC_RE.match(raw)
         if not match:
             return None
         width = int(match.group(1))
         height = int(match.group(2))
-        if not (20 <= width <= 300 and 20 <= height <= 300):
+        if not (
+            _SPEC_MIN_MM <= width <= _SPEC_MAX_MM and _SPEC_MIN_MM <= height <= _SPEC_MAX_MM
+        ):
             return None
-        # Accept legacy -L/-P in the string for parse, but ignore: page orient is always auto.
-        return cls(text=text.strip(), width_mm=width, height_mm=height, landscape=None)
+        return cls(
+            text=raw,
+            width_mm=width,
+            height_mm=height,
+            landscape=None,
+            mirror=True,
+            card_landscape=width >= height,
+        )
+
+    def face_width_mm(self) -> int:
+        w, h = self.width_mm, self.height_mm
+        return max(w, h) if self.card_landscape else min(w, h)
+
+    def face_height_mm(self) -> int:
+        w, h = self.width_mm, self.height_mm
+        return min(w, h) if self.card_landscape else max(w, h)
 
     def card_height_mm(self) -> int:
-        return self.height_mm * (2 if self.mirror else 1)
+        return self.face_height_mm() * (2 if self.mirror else 1)
 
     def prefers_landscape(self, page_w_mm: float, page_h_mm: float) -> bool:
         _, landscape = calculate_layout(
             max(1, int(page_w_mm * 10)),
             max(1, int(page_h_mm * 10)),
-            max(1, int(self.width_mm * 10)),
+            max(1, int(self.face_width_mm() * 10)),
             max(1, int(self.card_height_mm() * 10)),
             None,
         )
         if landscape:
             return True
-        return prefer_landscape(page_w_mm, page_h_mm, self.width_mm, self.card_height_mm())
+        return prefer_landscape(page_w_mm, page_h_mm, self.face_width_mm(), self.card_height_mm())
 
     def get_rectangles(
         self,
@@ -153,12 +212,13 @@ class Setup:
         lock_page: bool = False,
     ) -> tuple[list[Rect], bool]:
         """Pack as many cards as fit. lock_page keeps the given sheet orientation."""
+        card_w = self.face_width_mm()
         card_h = self.card_height_mm()
         if dpi is not None:
-            small_w = mm_to_pixels(self.width_mm, dpi)
+            small_w = mm_to_pixels(card_w, dpi)
             small_h = mm_to_pixels(card_h, dpi)
         else:
-            small_w, small_h = mm_size_to_hundredth(self.width_mm, card_h)
+            small_w, small_h = mm_size_to_hundredth(card_w, card_h)
         landscape = False if lock_page else self.landscape
         return calculate_layout(
             page_width, page_height, max(1, small_w), max(1, small_h), landscape
@@ -175,19 +235,31 @@ class Setup:
             "title1": self.title1.to_dict(),
             "title2": self.title2.to_dict(),
             "landscape": self.landscape,
+            "mirror": self.mirror,
+            "card_landscape": self.card_landscape,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> Setup:
         parsed = cls.parse(str(data.get("text", "200*100mm")))
         base = parsed or cls()
-        base.margin_ratio = float(data.get("margin_ratio", 0.15))
-        base.offset_x_mm = int(data.get("offset_x_mm", 0))
-        base.offset_y_mm = int(data.get("offset_y_mm", 0))
+        try:
+            base.margin_ratio = float(data.get("margin_ratio", 0.15))
+        except (TypeError, ValueError):
+            base.margin_ratio = 0.15
+        try:
+            base.offset_x_mm = int(data.get("offset_x_mm", 0))
+        except (TypeError, ValueError):
+            base.offset_x_mm = 0
+        try:
+            base.offset_y_mm = int(data.get("offset_y_mm", 0))
+        except (TypeError, ValueError):
+            base.offset_y_mm = 0
         base.title1 = Title.from_dict(data.get("title1"))
         base.title2 = Title.from_dict(data.get("title2"))
-        if "landscape" in data and data["landscape"] is not None:
-            # Legacy field ignored — orientation is chosen in print preview / auto pack.
-            pass
         base.landscape = None
+        if "mirror" in data:
+            base.mirror = bool(data.get("mirror"))
+        if "card_landscape" in data:
+            base.card_landscape = bool(data.get("card_landscape"))
         return base

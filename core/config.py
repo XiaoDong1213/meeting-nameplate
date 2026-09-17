@@ -9,9 +9,9 @@ from typing import Optional
 
 from core.colors import WHITE_ARGB
 from core.enums import DashStyle, FontStyle
-from core.pages import PAGE_SIZE_NAME_SET
+from core.pages import PAGE_ORIENT_KEY_SET, PAGE_SIZE_NAME_SET
 from core.paths import data_dir
-from core.specs import DEFAULT_SIZE_LIST, Setup
+from core.specs import DEFAULT_SIZE_LIST, Setup, merge_size_list
 from core.text import build_content_list
 
 DEFAULT_CONFIG_NAME = "config.json"
@@ -38,6 +38,11 @@ class PrintConfig:
     border_left: bool = True
     border_right: bool = True
     border_fold: bool = True  # 对折内折线
+    # Positive = inset (inward); negative = outset (outward). Unit: mm.
+    border_inset_top_mm: int = 0
+    border_inset_bottom_mm: int = 0
+    border_inset_left_mm: int = 0
+    border_inset_right_mm: int = 0
     page_size: str = "A4"  # A4 / A5 / A3 / Letter
     page_orientation: str = "auto"  # auto / portrait / landscape
     setups: dict[str, Setup] = field(default_factory=dict)
@@ -67,6 +72,8 @@ class PrintConfig:
             parsed.offset_y_mm = stored.offset_y_mm
             parsed.title1 = stored.title1
             parsed.title2 = stored.title2
+            parsed.mirror = stored.mirror
+            parsed.card_landscape = stored.card_landscape
         self.setups[self.size_text] = parsed
         if self.size_text not in self.size_list:
             self.size_list.append(self.size_text)
@@ -99,6 +106,10 @@ class PrintConfig:
             "border_left": self.border_left,
             "border_right": self.border_right,
             "border_fold": self.border_fold,
+            "border_inset_top_mm": self.border_inset_top_mm,
+            "border_inset_bottom_mm": self.border_inset_bottom_mm,
+            "border_inset_left_mm": self.border_inset_left_mm,
+            "border_inset_right_mm": self.border_inset_right_mm,
             "page_size": self.page_size,
             "page_orientation": self.page_orientation,
             "setups": {k: v.to_dict() for k, v in self.setups.items()},
@@ -139,7 +150,9 @@ class PrintConfig:
         cfg.size_text = str(data.get("size_text", cfg.size_text))
         size_list = data.get("size_list")
         if isinstance(size_list, list) and size_list:
-            cfg.size_list = [str(x) for x in size_list]
+            cfg.size_list = merge_size_list([str(x) for x in size_list])
+        else:
+            cfg.size_list = list(DEFAULT_SIZE_LIST)
         lines = data.get("lines")
         if isinstance(lines, list):
             cfg.lines = [str(x) for x in lines]
@@ -159,10 +172,21 @@ class PrintConfig:
         cfg.border_left = bool(data.get("border_left", True))
         cfg.border_right = bool(data.get("border_right", True))
         cfg.border_fold = bool(data.get("border_fold", True))
+
+        def _inset(key: str) -> int:
+            try:
+                return int(data.get(key, 0))
+            except (TypeError, ValueError):
+                return 0
+
+        cfg.border_inset_top_mm = _inset("border_inset_top_mm")
+        cfg.border_inset_bottom_mm = _inset("border_inset_bottom_mm")
+        cfg.border_inset_left_mm = _inset("border_inset_left_mm")
+        cfg.border_inset_right_mm = _inset("border_inset_right_mm")
         page_size = str(data.get("page_size", "A4"))
         cfg.page_size = page_size if page_size in PAGE_SIZE_NAME_SET else "A4"
         orient = str(data.get("page_orientation", "auto")).lower()
-        cfg.page_orientation = orient if orient in {"auto", "portrait", "landscape"} else "auto"
+        cfg.page_orientation = orient if orient in PAGE_ORIENT_KEY_SET else "auto"
         setups = data.get("setups") or {}
         if isinstance(setups, dict):
             cfg.setups = {k: Setup.from_dict(v) for k, v in setups.items() if isinstance(v, dict)}

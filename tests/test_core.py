@@ -26,13 +26,86 @@ class TestSetupParse:
         assert s.landscape is None
         assert s.mirror is True
 
+    def test_paper_alias(self):
+        s = Setup.parse("a4")
+        assert s is not None
+        assert s.text == "A4"
+        assert s.width_mm == 210
+        assert s.height_mm == 297
+        assert s.mirror is False
+        assert s.card_landscape is False
+        assert s.face_width_mm() == 210
+        assert s.face_height_mm() == 297
+        assert Setup.parse("A5").height_mm == 210
+        assert Setup.parse("A3").height_mm == 420
+
+    def test_card_orient_swap(self):
+        s = Setup.parse("A4")
+        assert s is not None
+        s.card_landscape = True
+        assert s.face_width_mm() == 297
+        assert s.face_height_mm() == 210
+        fold = Setup.parse("220*110mm")
+        assert fold is not None
+        assert fold.card_landscape is True
+        assert fold.face_width_mm() == 220
+        fold.card_landscape = False
+        assert fold.face_width_mm() == 110
+        assert fold.face_height_mm() == 220
+
+    def test_single_vs_fold_height(self):
+        fold = Setup.parse("220*110mm")
+        single = Setup.parse("A4")
+        assert fold is not None and single is not None
+        assert fold.card_height_mm() == 220
+        single.mirror = False
+        assert single.card_height_mm() == 297
+        single.mirror = True
+        assert single.card_height_mm() == 594
+
     def test_out_of_range(self):
         assert Setup.parse("10*10mm") is None
-        assert Setup.parse("400*100mm") is None
+        assert Setup.parse("600*100mm") is None
 
     def test_invalid(self):
         assert Setup.parse("abc") is None
         assert Setup.parse("") is None
+
+
+class TestBorderInset:
+    def test_inset_rect_shrink_and_expand(self):
+        from core.layout import Rect, inset_rect
+
+        base = Rect(10, 20, 100, 80)
+        shrink = inset_rect(base, top=5, right=5, bottom=5, left=5)
+        assert shrink == Rect(15, 25, 90, 70)
+        expand = inset_rect(base, top=-2, right=-3, bottom=-4, left=-1)
+        assert expand == Rect(9, 18, 104, 86)
+
+    def test_config_roundtrip(self, tmp_path: Path):
+        path = tmp_path / "config.json"
+        cfg = PrintConfig.default()
+        cfg.border_inset_top_mm = -3
+        cfg.border_inset_right_mm = 5
+        save_config(cfg, path)
+        loaded = load_config(path).config
+        assert loaded.border_inset_top_mm == -3
+        assert loaded.border_inset_right_mm == 5
+
+
+class TestSetupMirrorRoundtrip:
+    def test_mirror_persists(self, tmp_path: Path):
+        path = tmp_path / "config.json"
+        cfg = PrintConfig.default()
+        setup = Setup.parse("A4")
+        assert setup is not None
+        setup.mirror = False
+        cfg.remember_setup(setup)
+        save_config(cfg, path)
+        loaded = load_config(path).config
+        assert loaded.current_setup is not None
+        assert loaded.current_setup.mirror is False
+        assert loaded.current_setup.text == "A4"
 
 
 class TestDefaultTitleXY:
